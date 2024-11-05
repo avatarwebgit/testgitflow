@@ -1,33 +1,39 @@
-name: Deploy Changes
+# .github/workflows/ftp-deploy.yml
+name: FTP Deploy on Push
 on:
   push:
-    branches: [ master ]
+    branches:
+      - main
+      - develop
+      - 'release/**'
+      - 'hotfix/**'
 
 jobs:
   deploy:
-    name: 🚀 Deploy
+    name: Deploy to FTP
     runs-on: ubuntu-latest
     steps:
-    - name: 📂 Get latest code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 2
+      - name: Get latest code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: 🔍 Get changed files
-      id: files
-      run: |
-        git diff --name-only --diff-filter=ACMR HEAD^1 HEAD > changed_files.txt
-        echo "Changed files:"
-        cat changed_files.txt
+      - name: Setup Git Config
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-    - name: 📤 Deploy Changed Files
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-      with:
-        server: ${{ secrets.FTP_SERVER }}
-        username: ${{ secrets.FTP_USERNAME }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        server-dir: ./public_html/
-        include: |
-          changed_files.txt
-        dangerous-clean-slate: false
-        state-name: .ftp-deploy-sync-state.json
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: /public_html/
+          protocol: ftp
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            README.md
+            .env
