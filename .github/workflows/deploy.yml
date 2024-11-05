@@ -1,0 +1,65 @@
+name: Publish Website to CPanel
+on:
+  push:
+    branches:
+      - master
+jobs:
+  FTP-Deploy-Action:
+    name: FTP-Deploy-Action
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2.1.0
+      with:
+        fetch-depth: 2 
+
+    - name: Build assets
+      run: npm install && npm run build
+
+    - name: Install PHP and Composer
+      uses: shivammathur/setup-php@v2
+      with:
+          php-version: '8.2' # Adjust to match the PHP version used by your Laravel project
+          tools: 'composer'
+
+    - name: Install PHP dependencies
+      run: composer install --no-dev --optimize-autoloader
+
+    - name: Get changed files
+      id: get_changed_files
+      run: |
+        echo "##[set-output name=files;]$(git diff --name-only HEAD^ HEAD)"
+
+    - name: Upload or Update files
+      run: |
+        REMOTE_DIR="./"
+        CHANGED_FILES="${{ steps.get_changed_files.outputs.files }}"
+
+        if [ -z "$CHANGED_FILES" ]; then
+          echo "No changes detected, skipping upload."
+        else
+          for FILE in $CHANGED_FILES; do
+            # Check if the file exists on the server
+            REMOTE_CHECKSUM=$(curl -s ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} | grep $FILE)
+
+            if [ -z "$REMOTE_CHECKSUM" ]; then
+              echo "$FILE does not exist on the server, uploading..."
+              curl -T "$FILE" ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}
+            else
+              echo "$FILE exists on the server, checking for updates..."
+              LOCAL_CHECKSUM=$(md5sum "$FILE" | awk '{ print $1 }')
+              REMOTE_CHECKSUM=$(curl -s ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} | md5sum | awk '{ print $1 }')
+
+              if [ "$LOCAL_CHECKSUM" != "$REMOTE_CHECKSUM" ]; then
+                echo "Updating $FILE..."
+                curl -T "$FILE" ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}
+              else
+                echo "$FILE is up to date, no action needed."
+              fi
+            fi
+          done
+        fi
+
+      env:
+        FTP_SERVER: ftp.avatarvps.com
+        FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+        FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
