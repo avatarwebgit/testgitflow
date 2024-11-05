@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+
 jobs:
   FTP-Deploy-Action:
     name: FTP-Deploy-Action
@@ -11,10 +12,6 @@ jobs:
     - uses: actions/checkout@v2.1.0
       with:
         fetch-depth: 2 
-
-
-
-
 
     - name: Get changed files
       id: get_changed_files
@@ -31,7 +28,7 @@ jobs:
         else
           for FILE in $CHANGED_FILES; do
             # Check if the file exists on the server
-            REMOTE_CHECKSUM=$(curl -s ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} | grep $FILE)
+            REMOTE_CHECKSUM=$(curl -s ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} | grep "$FILE")
 
             if [ -z "$REMOTE_CHECKSUM" ]; then
               echo "$FILE does not exist on the server, uploading..."
