@@ -1,54 +1,68 @@
-name: Publish Website to CPanel
+name: Smart FTP Deploy
 on:
   push:
-    branches:
-      - master
+    branches: [ master ]
 
 jobs:
-  FTP-Deploy-Action:
-    name: FTP-Deploy-Action
+  deploy:
+    name: 🚀 Deploy Changes
     runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 2 
-
-    - name: Get changed files
-      id: get_changed_files
-      run: |
-        echo "##[set-output name=files;]$(git diff --name-only HEAD^ HEAD)"
-
-    - name: Upload or Update files
-      run: |
-        REMOTE_DIR="./"
-        CHANGED_FILES="${{ steps.get_changed_files.outputs.files }}"
-
-        if [ -z "$CHANGED_FILES" ]; then
-          echo "No changes detected, skipping upload."
-        else
-          for FILE in $CHANGED_FILES; do
-            # Check if the file exists on the server
-            REMOTE_CHECKSUM=$(curl -s ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} | grep "$FILE")
-
-            if [ -z "$REMOTE_CHECKSUM" ]; then
-              echo "$FILE does not exist on the server, uploading..."
-              curl -T "$FILE" ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}
-            else
-              echo "$FILE exists on the server, checking for updates..."
-              LOCAL_CHECKSUM=$(md5sum "$FILE" | awk '{ print $1 }')
-              REMOTE_CHECKSUM=$(curl -s ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} | md5sum | awk '{ print $1 }')
-
-              if [ "$LOCAL_CHECKSUM" != "$REMOTE_CHECKSUM" ]; then
-                echo "Updating $FILE..."
-                curl -T "$FILE" ftp://${{ secrets.FTP_SERVER }}/$REMOTE_DIR/$FILE --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}
-              else
-                echo "$FILE is up to date, no action needed."
-              fi
+      - name: 📂 Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2 # برای مقایسه با کامیت قبلی نیاز داریم
+      
+      - name: 🔍 Get changed files
+        id: changed-files
+        run: |
+          # لیست فایل‌های تغییر کرده و جدید
+          echo "modified=$(git diff --name-only --diff-filter=M HEAD^1 HEAD | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          echo "added=$(git diff --name-only --diff-filter=A HEAD^1 HEAD | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          
+          # ذخیره لیست فایل‌ها در فایل برای استفاده در مرحله بعد
+          git diff --name-only --diff-filter=M HEAD^1 HEAD > modified_files.txt
+          git diff --name-only --diff-filter=A HEAD^1 HEAD > added_files.txt
+      
+      - name: 📤 Upload changed files
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          # نصب lftp برای آپلود فایل‌ها
+          sudo apt-get install -y lftp
+          
+          # تنظیم اسکریپت LFTP
+          echo "set ssl:verify-certificate no
+          set ftp:ssl-allow no
+          open ftp://$FTP_USERNAME:$FTP_PASSWORD@$FTP_SERVER
+          
+          # آپلود فایل‌های تغییر یافته
+          cat modified_files.txt | while read file; do
+            if [ ! -z "\$file" ]; then
+              echo "Updating \$file"
+              put -O public_html/\$(dirname \$file) \$file
             fi
           done
-        fi
-
-      env:
-        FTP_SERVER: ftp.avatarvps.com  # آدرس سرور FTP خود را وارد کنید.
-        FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-        FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          
+          # آپلود فایل‌های جدید
+          cat added_files.txt | while read file; do
+            if [ ! -z "\$file" ]; then
+              echo "Adding new file \$file"
+              mkdir -p -f public_html/\$(dirname \$file)
+              put -O public_html/\$(dirname \$file) \$file
+            fi
+          done
+          
+          bye" > upload_script.lftp
+          
+          # اجرای اسکریپت آپلود
+          lftp -f upload_script.lftp
+          
+      - name: 📝 Report changes
+        if: always()
+        run: |
+          echo "Modified files: ${{ steps.changed-files.outputs.modified }}"
+          echo "Added files: ${{ steps.changed-files.outputs.added }}"
