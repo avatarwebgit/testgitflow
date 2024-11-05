@@ -49,6 +49,6 @@ jobs:
         fi
 
       env:
-        FTP_SERVER: ftp.avatarvps.com
+        FTP_SERVER: ftp.avatarvps.com  # آدرس سرور FTP خود را وارد کنید.
         FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
         FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
